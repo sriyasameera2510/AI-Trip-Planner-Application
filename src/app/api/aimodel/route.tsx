@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from 'openai';
+import { aj } from "../arcjet/route";
+import { auth, currentUser } from "@clerk/nextjs/server";
 
 const openai = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
@@ -78,7 +80,19 @@ Output Schema:{
 
 export async function POST(req : NextRequest) {
     const { messages, isFinal }=await req.json();
+    const user= await currentUser();
+    const {has} = await auth();
+    const hasPremiumAccess = has({ plan: 'monthly' })
 
+    const decision = await aj.protect(req, { userId:user?.primaryEmailAddress?.emailAddress, requested: isFinal?5:0 });
+
+    if(decision?.reason?.remaining==0 && !hasPremiumAccess){
+        return NextResponse.json({
+            resp:'No Free Credit Remaining',
+            ui:'limit'
+        })
+    }
+    
     try{
         const completion = await openai.chat.completions.create({
             model: 'openai/gpt-oss-20b:free',
@@ -99,4 +113,8 @@ export async function POST(req : NextRequest) {
     catch(e){
         return NextResponse.json(e);
     }
+}
+
+function has(arg0: { plan: string; }) {
+    throw new Error("Function not implemented.");
 }
